@@ -100,15 +100,33 @@ or your own app. You need scopes `ads_read` (reads) and `ads_management`
 
 ## Caveats
 
-1. **That token is the keys to the kingdom.** It's a long-lived token sitting in
-   `.env` with full write access to the ad account — the two-switch gate is the
-   only thing between the agent and real spend. Guard the token, and note that
-   tokens expire, so they need re-pulling now and then.
+This is intentionally small and blunt. A few things are worth knowing before you
+point it at a real account:
 
-2. **Dry-run by default cuts both ways.** Runs "succeed" without doing anything
-   live unless you remember `SAFE_MODE=false` + `apply=True`. Easy to think
-   something published when it didn't — always confirm in Ads Manager. (Yes,
-   you still open it sometimes. To *check*. Not to *click*.)
+1. **Dry-run mode is the default.** That is the right default, but it can fool
+   you. A script can finish cleanly and still have changed nothing live. For a
+   real write, you need both `SAFE_MODE=false` and `apply=True`, then you should
+   confirm the result in Ads Manager.
+
+2. **Read failures can look like empty results.** The client is designed to stay
+   usable offline, so reads return `[]` or `{}` when credentials are missing.
+   Today, some API errors can also come back as empty results after logging an
+   error. If a read unexpectedly returns nothing, check stderr and run
+   `python -m headless_ads.demo --check`.
+
+3. **Config is loaded when the package imports.** Put `META_ACCESS_TOKEN`,
+   `META_AD_ACCOUNT_ID`, and `SAFE_MODE` in the environment or `.env` before
+   starting Python. If you change those values inside a running process, create
+   a new process rather than assuming the client picked them up.
+
+4. **Uploads are intentionally basic.** Image and video upload helpers cover the
+   common path, but they do not try to be a full creative-asset manager. Use
+   normal JPEG/MP4-style inputs, and inspect the returned Meta response before
+   wiring the asset into an ad.
+
+5. **Your token is real account access.** Treat `.env` like a private key. The
+   guard helps prevent accidental writes from this package, but it does not make
+   a leaked Meta token safe.
 
 ## License
 
