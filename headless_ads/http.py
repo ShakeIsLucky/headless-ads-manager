@@ -9,12 +9,18 @@ import urllib.error
 from . import log
 
 
+def _validate_url(url: str) -> None:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError(f"Unsupported URL: {log.sanitize_url(url)}")
+
+
 class HttpError(Exception):
     def __init__(self, status: int, body: str, url: str):
         self.status = status
-        self.body = body
-        self.url = url
-        super().__init__(f"HTTP {status} for {url}: {body[:400]}")
+        self.body = log.sanitize(body)
+        self.url = log.sanitize_url(url)
+        super().__init__(f"HTTP {status} for {self.url}: {self.body[:400]}")
 
 
 def request(
@@ -31,6 +37,7 @@ def request(
 ):
     if params:
         url = url + ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
+    _validate_url(url)
     hdrs = {"Accept": "application/json", "User-Agent": "headless-ads-manager/0.1"}
     body = data
     if json_body is not None:
@@ -43,7 +50,7 @@ def request(
     for attempt in range(1, retries + 1):
         req = urllib.request.Request(url, data=body, headers=hdrs, method=method.upper())
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
                 raw = resp.read().decode("utf-8", "replace")
                 ctype = resp.headers.get("Content-Type", "")
                 if "application/json" in ctype or (raw[:1] in "{["):
@@ -62,7 +69,7 @@ def request(
             last_exc = e
         if attempt < retries:
             sleep = backoff ** attempt
-            log.warn(f"http retry {attempt}/{retries} in {sleep:.1f}s", url=url)
+            log.warn(f"http retry {attempt}/{retries} in {sleep:.1f}s", url=log.sanitize_url(url))
             time.sleep(sleep)
     raise last_exc if last_exc else HttpError(0, "unknown", url)
 

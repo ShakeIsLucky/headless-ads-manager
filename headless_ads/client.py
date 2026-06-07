@@ -17,7 +17,7 @@ from .http import HttpError
 
 
 class MetaClient:
-    """Graph API wrapper. Auth via ``access_token`` query param on every call."""
+    """Graph API wrapper. Auth via bearer headers for reads, token body for writes."""
 
     def __init__(self, access_token: str | None = None,
                  ad_account_id: str | None = None,
@@ -41,11 +41,27 @@ class MetaClient:
             acct = f"act_{acct}"
         return acct
 
-    def _auth_params(self, extra: dict | None = None) -> dict:
-        params = {"access_token": self.access_token}
+    def _auth_headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.access_token}"}
+
+    def _params(self, extra: dict | None = None) -> dict:
+        params = {}
         if extra:
             params.update({k: v for k, v in extra.items() if v is not None})
         return params
+
+    def _strip_auth_from_url(self, url: str) -> str:
+        import urllib.parse
+
+        parts = urllib.parse.urlsplit(url)
+        query = [
+            (key, value)
+            for key, value in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+            if key.lower() != "access_token"
+        ]
+        return urllib.parse.urlunsplit(
+            (parts.scheme, parts.netloc, parts.path, urllib.parse.urlencode(query), parts.fragment)
+        )
 
     def _get(self, path: str, params: dict | None = None) -> list[dict]:
         """GET a Graph edge, transparently following ``paging.next``. Returns
@@ -57,7 +73,7 @@ class MetaClient:
         out: list[dict] = []
         next_url: str | None = None
         try:
-            resp = http.get(url, params=self._auth_params(params))
+            resp = http.get(url, params=self._params(params), headers=self._auth_headers())
             while True:
                 if isinstance(resp, dict):
                     out.extend(resp.get("data", []) or [])
@@ -66,7 +82,7 @@ class MetaClient:
                     break
                 if not next_url:
                     break
-                resp = http.get(next_url)  # next already carries token + cursor
+                resp = http.get(self._strip_auth_from_url(next_url), headers=self._auth_headers())
             return out
         except HttpError as e:
             log.error("Meta read failed", path=path, status=e.status, body=e.body[:200])
@@ -147,7 +163,11 @@ class MetaClient:
                             "optimization_goal", "bid_amount"]
         url = f"{self.base}/{adset_id}"
         try:
-            resp = http.get(url, params=self._auth_params({"fields": ",".join(fields)}))
+            resp = http.get(
+                url,
+                params=self._params({"fields": ",".join(fields)}),
+                headers=self._auth_headers(),
+            )
             return resp if isinstance(resp, dict) else {}
         except HttpError as e:
             log.error("get_adset failed", adset_id=adset_id, status=e.status)
