@@ -1,3 +1,5 @@
+*use at your own risk. This was created late at night by a vibe coder.*
+
 # Headless Ads Manager
 
 Run Meta Ads from code instead of clicking through Ads Manager. Pull analytics, edit ads, and publish campaigns from a script or an agent.
